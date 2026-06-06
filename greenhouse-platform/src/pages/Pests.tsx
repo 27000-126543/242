@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Bug,
   Camera,
@@ -14,8 +14,10 @@ import {
   User,
   Calendar,
   FileText,
+  Loader2,
 } from 'lucide-react';
 import { useAppStore, hasPermission } from '../store';
+import { api } from '../services/api';
 import {
   formatDateTime,
   getZoneName,
@@ -25,18 +27,26 @@ import {
 } from '../utils';
 
 const Pests: React.FC = () => {
-  const { pestDetections, currentUser, zones, approvePestDetection, addPestDetection } = useAppStore();
+  const { pestDetections, currentUser, zones, approvePestDetection, addPestDetection, loadPestDetections } = useAppStore();
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [searchText, setSearchText] = useState<string>('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedDetection, setSelectedDetection] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [detecting, setDetecting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [newDetection, setNewDetection] = useState({
     zoneId: '',
     photoUrl: '',
     detectedPest: '',
     recommendedTreatment: '',
+    confidence: 0,
   });
+
+  useEffect(() => {
+    loadPestDetections();
+  }, [loadPestDetections]);
 
   const filteredDetections = pestDetections.filter((p) => {
     if (selectedStatus !== 'all' && p.status !== selectedStatus) return false;
@@ -44,20 +54,44 @@ const Pests: React.FC = () => {
     return true;
   });
 
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    setUploading(true);
+    setDetecting(true);
+    try {
+      const result = await api.upload.pestImage(file);
+      setNewDetection(prev => ({
+        ...prev,
+        photoUrl: result.imageUrl,
+        detectedPest: result.detectedPest,
+        recommendedTreatment: result.recommendedTreatment,
+        confidence: result.confidence,
+      }));
+    } catch (error) {
+      console.error('图片上传识别失败:', error);
+      alert('图片上传识别失败，请重试');
+    } finally {
+      setUploading(false);
+      setDetecting(false);
+    }
+  };
+
   const handleAddDetection = () => {
-    if (newDetection.zoneId && newDetection.detectedPest) {
+    if (newDetection.zoneId && newDetection.photoUrl && newDetection.detectedPest) {
       addPestDetection({
         zoneId: newDetection.zoneId,
         reportedBy: currentUser.id,
-        photoUrl: newDetection.photoUrl || `https://images.unsplash.com/photo-${1592150621744 + Math.floor(Math.random() * 1000)}-aca64f48394a?w=400`,
+        photoUrl: newDetection.photoUrl,
         detectedPest: newDetection.detectedPest,
-        confidence: Math.floor(80 + Math.random() * 15),
+        confidence: newDetection.confidence,
         recommendedTreatment: newDetection.recommendedTreatment || '请技术员审核后确定防治方案',
         status: 'detected',
         harvestLocked: false,
       });
       setShowAddModal(false);
-      setNewDetection({ zoneId: '', photoUrl: '', detectedPest: '', recommendedTreatment: '' });
+      setNewDetection({ zoneId: '', photoUrl: '', detectedPest: '', recommendedTreatment: '', confidence: 0 });
     }
   };
 
@@ -251,37 +285,55 @@ const Pests: React.FC = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">上传病害照片</label>
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
-                  <Upload size={48} className="mx-auto text-gray-400 mb-2" />
-                  <p className="text-sm text-gray-500 mb-2">点击或拖拽上传照片</p>
+                <div 
+                  className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-primary-400 transition-colors"
+                  onClick={() => fileInputRef.current?.click()}
+                >
                   <input
-                    type="text"
-                    placeholder="或输入图片URL（演示用）"
-                    value={newDetection.photoUrl}
-                    onChange={(e) => setNewDetection({ ...newDetection, photoUrl: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handlePhotoUpload}
+                    className="hidden"
                   />
+                  {newDetection.photoUrl ? (
+                    <img src={newDetection.photoUrl} alt="上传预览" className="w-full max-h-48 object-contain mx-auto" />
+                  ) : detecting ? (
+                    <>
+                      <Loader2 size={48} className="mx-auto text-primary-500 mb-2 animate-spin" />
+                      <p className="text-sm text-primary-600">AI识别中...</p>
+                    </>
+                  ) : (
+                    <>
+                      <Upload size={48} className="mx-auto text-gray-400 mb-2" />
+                      <p className="text-sm text-gray-500">{uploading ? '上传中...' : '点击上传照片进行AI识别'}</p>
+                    </>
+                  )}
                 </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">病虫害类型（系统自动识别）</label>
-                <input
-                  type="text"
-                  value={newDetection.detectedPest}
-                  onChange={(e) => setNewDetection({ ...newDetection, detectedPest: e.target.value })}
-                  placeholder="如：白粉病、蚜虫、霜霉病等"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">初步描述（可选）</label>
-                <textarea
-                  value={newDetection.recommendedTreatment}
-                  onChange={(e) => setNewDetection({ ...newDetection, recommendedTreatment: e.target.value })}
-                  placeholder="描述病害症状..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm h-20 resize-none"
-                />
-              </div>
+              {newDetection.detectedPest && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      识别结果 <span className="text-green-600">（置信度：{newDetection.confidence}%）</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={newDetection.detectedPest}
+                      onChange={(e) => setNewDetection({ ...newDetection, detectedPest: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">推荐用药方案</label>
+                    <textarea
+                      value={newDetection.recommendedTreatment}
+                      onChange={(e) => setNewDetection({ ...newDetection, recommendedTreatment: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm h-20 resize-none"
+                    />
+                  </div>
+                </>
+              )}
             </div>
             <div className="flex gap-3 mt-6">
               <button

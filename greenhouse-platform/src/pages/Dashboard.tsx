@@ -1,61 +1,33 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  PieChart,
-  Pie,
-  Cell,
-  AreaChart,
-  Area,
-  Legend,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  BarChart, Bar, PieChart, Pie, Cell, AreaChart, Area, Legend,
 } from 'recharts';
 import {
-  Thermometer,
-  Droplets,
-  Sun,
-  Wind,
-  Sprout,
-  CheckCircle,
-  Clock,
-  AlertTriangle,
-  TrendingUp,
-  RefreshCw,
-  Filter,
-  Download,
+  Thermometer, Droplets, Sun, Wind, Sprout, CheckCircle, Clock,
+  AlertTriangle, TrendingUp, RefreshCw, Filter,
 } from 'lucide-react';
 import { useAppStore } from '../store';
 import {
-  formatDateTime,
-  getZoneName,
-  getSensorTypeName,
-  getTaskStatusName,
-  getTaskStatusColor,
-  getZoneTypeColor,
+  formatDateTime, getZoneName, getSensorTypeName, getTaskStatusName,
+  getTaskStatusColor, getZoneTypeColor,
 } from '../utils';
-import { heatmapPoints, monthlyReports } from '../data/mockData';
+
+const COLORS = ['#22c55e', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
 
 const Dashboard: React.FC = () => {
   const {
-    zones,
-    sensorData,
-    tasks,
-    alerts,
-    pestDetections,
-    yieldPredictions,
-    refreshSensorData,
-    lastRefresh,
+    zones, sensorData, tasks, alerts, pestDetections, yieldPredictions,
+    monthlyReports, refreshSensorData, lastRefresh, loadAllData, loading,
   } = useAppStore();
 
   const [selectedZone, setSelectedZone] = useState<string>('all');
   const [selectedDate, setSelectedDate] = useState<string>('today');
   const [selectedCrop, setSelectedCrop] = useState<string>('all');
+
+  useEffect(() => {
+    loadAllData();
+  }, [loadAllData]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -64,382 +36,334 @@ const Dashboard: React.FC = () => {
     return () => clearInterval(interval);
   }, [refreshSensorData]);
 
+  const filteredZones = useMemo(() => {
+    return zones.filter(z => {
+      if (selectedZone !== 'all' && z.id !== selectedZone) return false;
+      if (selectedCrop !== 'all' && !z.crop.includes(selectedCrop)) return false;
+      return true;
+    });
+  }, [zones, selectedZone, selectedCrop]);
+
+  const filteredSensorData = useMemo(() => {
+    return sensorData.filter(s => {
+      if (selectedZone !== 'all' && s.zoneId !== selectedZone) return false;
+      const zone = zones.find(z => z.id === s.zoneId);
+      if (selectedCrop !== 'all' && zone && !zone.crop.includes(selectedCrop)) return false;
+      return true;
+    });
+  }, [sensorData, zones, selectedZone, selectedCrop]);
+
+  const filteredTasks = useMemo(() => {
+    return tasks.filter(t => {
+      if (selectedZone !== 'all' && t.zoneId !== selectedZone) return false;
+      const zone = zones.find(z => z.id === t.zoneId);
+      if (selectedCrop !== 'all' && zone && !zone.crop.includes(selectedCrop)) return false;
+      return true;
+    });
+  }, [tasks, zones, selectedZone, selectedCrop]);
+
+  const filteredPests = useMemo(() => {
+    return pestDetections.filter(p => {
+      if (selectedZone !== 'all' && p.zoneId !== selectedZone) return false;
+      const zone = zones.find(z => z.id === p.zoneId);
+      if (selectedCrop !== 'all' && zone && !zone.crop.includes(selectedCrop)) return false;
+      return true;
+    });
+  }, [pestDetections, zones, selectedZone, selectedCrop]);
+
   const calculateEnvCompliance = () => {
     const zoneRates: Record<string, number> = {};
-    zones.forEach((zone) => {
-      const zoneSensors = sensorData.filter((s) => s.zoneId === zone.id);
+    filteredZones.forEach((zone) => {
+      const zoneSensors = filteredSensorData.filter((s) => s.zoneId === zone.id);
       const normalCount = zoneSensors.filter((s) => s.isNormal).length;
       zoneRates[zone.type] = zoneRates[zone.type] || 0;
       const rate = zoneSensors.length > 0 ? (normalCount / zoneSensors.length) * 100 : 0;
-      zoneRates[zone.type] = Math.max(zoneRates[zone.type], rate);
+      zoneRates[zone.type] = Math.max(zoneRates[zone.type], Math.round(rate));
     });
     return zoneRates;
   };
 
   const envCompliance = calculateEnvCompliance();
   const overallCompliance = Object.values(envCompliance).length > 0
-    ? Object.values(envCompliance).reduce((a, b) => a + b, 0) / Object.values(envCompliance).length
+    ? Math.round(Object.values(envCompliance).reduce((a, b) => a + b, 0) / Object.values(envCompliance).length)
     : 0;
 
-  const totalTasks = tasks.length;
-  const completedTasks = tasks.filter((t) => t.status === 'completed').length;
-  const inProgressTasks = tasks.filter((t) => t.status === 'in_progress').length;
-  const pendingTasks = tasks.filter((t) => t.status === 'pending').length;
-  const overdueTasks = tasks.filter((t) => t.status === 'overdue' || t.status === 'escalated').length;
-  const taskCompletionRate = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
+  const totalTasks = filteredTasks.length;
+  const completedTasks = filteredTasks.filter(t => t.status === 'completed').length;
+  const taskCompletionRate = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
-  const activeAlerts = alerts.filter((a) => !a.resolved).length;
-  const activePests = pestDetections.filter((p) => p.status !== 'resolved').length;
+  const activeAlerts = alerts.filter(a => !a.resolved).length;
+  const totalYield = yieldPredictions.reduce((sum, y) => sum + y.predictedYield, 0);
 
-  const yieldComparisonData = yieldPredictions.map((yp) => ({
-    name: yp.crop,
-    预测产量: yp.predictedYield,
-    历史产量: yp.historicalYield,
-  }));
+  const envTrendData = useMemo(() => {
+    const hours = Array.from({ length: 24 }, (_, i) => i);
+    return hours.map(h => ({
+      hour: `${h}:00`,
+      temperature: 18 + Math.random() * 12,
+      humidity: 50 + Math.random() * 30,
+      light: 1000 + Math.random() * 40000,
+    }));
+  }, []);
 
-  const taskTrendData = [
-    { time: '06:00', 完成: 0, 待处理: 5 },
-    { time: '08:00', 完成: 1, 待处理: 4 },
-    { time: '10:00', 完成: 1, 待处理: 4 },
-    { time: '12:00', 完成: 2, 待处理: 3 },
-    { time: '14:00', 完成: 2, 待处理: 3 },
-    { time: '16:00', 完成: 3, 待处理: 2 },
+  const zoneDistribution = useMemo(() => {
+    const typeCount: Record<string, number> = {};
+    filteredZones.forEach(z => { typeCount[z.type] = (typeCount[z.type] || 0) + z.area; });
+    return Object.entries(typeCount).map(([name, value]) => ({ name, value }));
+  }, [filteredZones]);
+
+  const yieldComparisonData = useMemo(() => {
+    return yieldPredictions.map(y => ({
+      name: getZoneName(y.zoneId, zones),
+      预计产量: y.predictedYield,
+      历史产量: y.historicalYield,
+    }));
+  }, [yieldPredictions, zones]);
+
+  const heatmapPoints = useMemo(() => {
+    return filteredPests.map(p => ({
+      zoneId: p.zoneId,
+      x: Math.random() * 100,
+      y: Math.random() * 100,
+      intensity: p.status === 'detected' ? 0.9 : p.status === 'approved' ? 0.6 : 0.3,
+      type: 'pest' as const,
+    }));
+  }, [filteredPests]);
+
+  const sensorCards = [
+    { type: 'temperature', icon: Thermometer, label: '温度', color: 'red' },
+    { type: 'humidity', icon: Droplets, label: '湿度', color: 'blue' },
+    { type: 'light', icon: Sun, label: '光照', color: 'yellow' },
+    { type: 'co2', icon: Wind, label: 'CO₂', color: 'gray' },
+    { type: 'soil', icon: Sprout, label: '土壤湿度', color: 'green' },
   ];
 
-  const zoneTypeData = [
-    { name: '育苗区', value: zones.filter((z) => z.type === 'seedling').length, color: '#10b981' },
-    { name: '叶菜区', value: zones.filter((z) => z.type === 'leafy').length, color: '#22c55e' },
-    { name: '果菜区', value: zones.filter((z) => z.type === 'fruit').length, color: '#f97316' },
-  ];
-
-  const getHeatmapColor = (intensity: number, type: string) => {
-    if (type === 'pest') {
-      if (intensity > 0.7) return 'bg-red-500';
-      if (intensity > 0.4) return 'bg-orange-500';
-      return 'bg-yellow-500';
-    } else {
-      if (intensity > 0.7) return 'bg-red-500';
-      if (intensity > 0.4) return 'bg-yellow-500';
-      return 'bg-green-500';
-    }
+  const getLatestSensorValue = (type: string) => {
+    const sensors = filteredSensorData.filter(s => s.type === type);
+    if (sensors.length === 0) return '--';
+    const avg = sensors.reduce((sum, s) => sum + s.value, 0) / sensors.length;
+    return `${Math.round(avg * 10) / 10} ${sensors[0].unit}`;
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-center">
+          <RefreshCw className="w-12 h-12 text-primary-600 animate-spin mx-auto mb-4" />
+          <p className="text-gray-500">数据加载中...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-gray-800">智慧温室数据大屏</h2>
-        <div className="flex items-center gap-3">
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <h2 className="text-2xl font-bold text-gray-800">数据大屏</h2>
+        <div className="flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-gray-200">
             <Filter size={16} className="text-gray-500" />
-            <select
-              value={selectedZone}
-              onChange={(e) => setSelectedZone(e.target.value)}
-              className="text-sm border-none outline-none bg-transparent"
-            >
+            <select value={selectedZone} onChange={e => setSelectedZone(e.target.value)}
+              className="text-sm border-none outline-none bg-transparent">
               <option value="all">全部区域</option>
-              {zones.map((z) => (
-                <option key={z.id} value={z.id}>{z.name}</option>
-              ))}
+              {zones.map(z => <option key={z.id} value={z.id}>{z.name}</option>)}
             </select>
           </div>
           <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-gray-200">
-            <select
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="text-sm border-none outline-none bg-transparent"
-            >
-              <option value="today">今日</option>
-              <option value="week">本周</option>
-              <option value="month">本月</option>
-            </select>
-          </div>
-          <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-gray-200">
-            <select
-              value={selectedCrop}
-              onChange={(e) => setSelectedCrop(e.target.value)}
-              className="text-sm border-none outline-none bg-transparent"
-            >
+            <select value={selectedCrop} onChange={e => setSelectedCrop(e.target.value)}
+              className="text-sm border-none outline-none bg-transparent">
               <option value="all">全部作物</option>
               <option value="番茄">番茄</option>
+              <option value="黄瓜">黄瓜</option>
               <option value="生菜">生菜</option>
-              <option value="草莓">草莓</option>
               <option value="菠菜">菠菜</option>
             </select>
           </div>
-          <button className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm">
-            <Download size={16} />
-            导出报告
-          </button>
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <RefreshCw size={14} />
+            <span>更新于 {lastRefresh ? formatDateTime(lastRefresh) : '--'}</span>
+          </div>
         </div>
       </div>
 
       <div className="grid grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-gray-500 text-sm">环境达标率</span>
-            <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-              <CheckCircle size={20} className="text-green-600" />
+        <div className="bg-gradient-to-r from-green-500 to-green-600 rounded-xl p-5 text-white">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-green-100 text-sm">环境达标率</p>
+              <p className="text-3xl font-bold mt-1">{overallCompliance}%</p>
             </div>
-          </div>
-          <div className="text-3xl font-bold text-gray-800 mb-1">
-            {overallCompliance.toFixed(1)}%
-          </div>
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-green-600">↑ 2.3%</span>
-            <span className="text-gray-400">较昨日</span>
+            <CheckCircle size={40} className="text-green-200" />
           </div>
         </div>
-
-        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-gray-500 text-sm">今日任务完成</span>
-            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-              <Clock size={20} className="text-blue-600" />
+        <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-xl p-5 text-white">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-blue-100 text-sm">今日任务完成</p>
+              <p className="text-3xl font-bold mt-1">{completedTasks}/{totalTasks}</p>
             </div>
-          </div>
-          <div className="text-3xl font-bold text-gray-800 mb-1">
-            {completedTasks}/{totalTasks}
-          </div>
-          <div className="w-full bg-gray-200 rounded-full h-2">
-            <div
-              className="bg-blue-500 h-2 rounded-full transition-all"
-              style={{ width: `${taskCompletionRate}%` }}
-            />
+            <Clock size={40} className="text-blue-200" />
           </div>
         </div>
-
-        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-gray-500 text-sm">活跃告警</span>
-            <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
-              <AlertTriangle size={20} className="text-red-600" />
+        <div className="bg-gradient-to-r from-red-500 to-red-600 rounded-xl p-5 text-white">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-red-100 text-sm">活跃告警</p>
+              <p className="text-3xl font-bold mt-1">{activeAlerts}</p>
             </div>
-          </div>
-          <div className="text-3xl font-bold text-gray-800 mb-1">
-            {activeAlerts + activePests}
-          </div>
-          <div className="flex items-center gap-3 text-sm">
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 bg-red-500 rounded-full" />
-              环境 {activeAlerts}
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2 h-2 bg-orange-500 rounded-full" />
-              病虫害 {activePests}
-            </span>
+            <AlertTriangle size={40} className="text-red-200" />
           </div>
         </div>
-
-        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-gray-500 text-sm">预计总产量</span>
-            <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-              <TrendingUp size={20} className="text-purple-600" />
+        <div className="bg-gradient-to-r from-purple-500 to-purple-600 rounded-xl p-5 text-white">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-purple-100 text-sm">预计总产量</p>
+              <p className="text-3xl font-bold mt-1">{totalYield.toLocaleString()} kg</p>
             </div>
-          </div>
-          <div className="text-3xl font-bold text-gray-800 mb-1">
-            {yieldPredictions.reduce((a, b) => a + b.predictedYield, 0)} kg
-          </div>
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-purple-600">↑ 8.5%</span>
-            <span className="text-gray-400">较上月</span>
+            <TrendingUp size={40} className="text-purple-200" />
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-12 gap-4">
-        <div className="col-span-8 bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+      <div className="grid grid-cols-5 gap-3">
+        {sensorCards.map(sc => (
+          <div key={sc.type} className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+            <div className="flex items-center gap-3 mb-2">
+              <div className={`p-2 rounded-lg bg-${sc.color}-50`}>
+                <sc.icon size={20} className={`text-${sc.color}-600`} />
+              </div>
+              <span className="text-sm text-gray-600">{sc.label}</span>
+            </div>
+            <p className="text-2xl font-bold text-gray-800">{getLatestSensorValue(sc.type)}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-3 gap-6">
+        <div className="col-span-2 bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+          <h3 className="text-lg font-semibold text-gray-800 mb-4">24小时环境趋势</h3>
+          <ResponsiveContainer width="100%" height={300}>
+            <AreaChart data={envTrendData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+              <XAxis dataKey="hour" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 11 }} />
+              <Tooltip />
+              <Legend />
+              <Area type="monotone" dataKey="temperature" stroke="#ef4444" fill="#fecaca" name="温度(°C)" />
+              <Area type="monotone" dataKey="humidity" stroke="#3b82f6" fill="#bfdbfe" name="湿度(%)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+          <h3 className="text-lg font-semibold text-gray-800 mb-4">区域分布</h3>
+          <ResponsiveContainer width="100%" height={300}>
+            <PieChart>
+              <Pie data={zoneDistribution} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} label>
+                {zoneDistribution.map((_, idx) => (
+                  <Cell key={`cell-${idx}`} fill={COLORS[idx % COLORS.length]} />
+                ))}
+              </Pie>
+              <Tooltip />
+              <Legend />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-6">
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
           <h3 className="text-lg font-semibold text-gray-800 mb-4">各区域环境达标率</h3>
-          <div className="grid grid-cols-3 gap-4 mb-6">
+          <div className="space-y-4">
             {Object.entries(envCompliance).map(([type, rate]) => (
-              <div key={type} className="text-center p-4 bg-gray-50 rounded-lg">
-                <div className="text-2xl font-bold text-gray-800">{rate.toFixed(1)}%</div>
-                <div className="text-sm text-gray-500 mt-1">
-                  {type === 'seedling' ? '育苗区' : type === 'leafy' ? '叶菜区' : '果菜区'}
+              <div key={type}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm text-gray-600">
+                    {type === 'seedling' ? '育苗区' : type === 'leafy' ? '叶菜区' : '果菜区'}
+                  </span>
+                  <span className="text-sm font-medium text-gray-800">{rate}%</span>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                <div className="w-full bg-gray-200 rounded-full h-2.5">
                   <div
-                    className={`h-2 rounded-full ${rate > 80 ? 'bg-green-500' : rate > 60 ? 'bg-yellow-500' : 'bg-red-500'}`}
+                    className={`h-2.5 rounded-full ${rate >= 90 ? 'bg-green-500' : rate >= 70 ? 'bg-yellow-500' : 'bg-red-500'}`}
                     style={{ width: `${rate}%` }}
                   />
                 </div>
               </div>
             ))}
           </div>
-          <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={taskTrendData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="time" fontSize={12} />
-              <YAxis fontSize={12} />
-              <Tooltip />
-              <Area type="monotone" dataKey="完成" stackId="1" stroke="#22c55e" fill="#22c55e" fillOpacity={0.3} />
-              <Area type="monotone" dataKey="待处理" stackId="2" stroke="#f59e0b" fill="#f59e0b" fillOpacity={0.3} />
-            </AreaChart>
-          </ResponsiveContainer>
         </div>
 
-        <div className="col-span-4 bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">实时传感器数据</h3>
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+          <h3 className="text-lg font-semibold text-gray-800 mb-4">今日任务进度</h3>
           <div className="space-y-3">
-            {sensorData.slice(0, 6).map((sensor) => (
-              <div key={sensor.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+            {filteredTasks.slice(0, 5).map(task => (
+              <div key={task.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                 <div className="flex items-center gap-3">
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                    sensor.type === 'temperature' ? 'bg-red-100 text-red-600' :
-                    sensor.type === 'humidity' ? 'bg-blue-100 text-blue-600' :
-                    sensor.type === 'light' ? 'bg-yellow-100 text-yellow-600' :
-                    sensor.type === 'co2' ? 'bg-gray-100 text-gray-600' :
-                    'bg-green-100 text-green-600'
-                  }`}>
-                    {sensor.type === 'temperature' && <Thermometer size={18} />}
-                    {sensor.type === 'humidity' && <Droplets size={18} />}
-                    {sensor.type === 'light' && <Sun size={18} />}
-                    {sensor.type === 'co2' && <Wind size={18} />}
-                    {sensor.type === 'soil' && <Sprout size={18} />}
-                  </div>
-                  <div>
-                    <div className="text-sm font-medium text-gray-800">{getZoneName(sensor.zoneId)}</div>
-                    <div className="text-xs text-gray-500">{getSensorTypeName(sensor.type)}</div>
-                  </div>
+                  <span className={`px-2 py-0.5 text-xs rounded ${getTaskStatusColor(task.status)}`}>
+                    {getTaskStatusName(task.status)}
+                  </span>
+                  <span className="text-sm text-gray-800">{task.title}</span>
                 </div>
-                <div className="text-right">
-                  <div className={`font-bold ${sensor.isNormal ? 'text-gray-800' : 'text-red-600'}`}>
-                    {sensor.value} {sensor.unit}
-                  </div>
-                  <div className={`text-xs ${sensor.isNormal ? 'text-green-600' : 'text-red-600'}`}>
-                    {sensor.isNormal ? '正常' : '异常'}
-                  </div>
-                </div>
+                <span className="text-xs text-gray-500">{getZoneName(task.zoneId, zones)}</span>
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-12 gap-4">
-        <div className="col-span-5 bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">病虫害告警热力图</h3>
-          <div className="grid grid-cols-3 gap-2">
-            {heatmapPoints.map((point, idx) => (
-              <div
-                key={idx}
-                className={`aspect-square rounded-lg flex items-center justify-center text-white text-sm font-medium ${getHeatmapColor(point.intensity, point.type)}`}
-              >
-                <div className="text-center">
-                  <div>{getZoneName(point.zoneId)}</div>
-                  <div className="text-xs opacity-80">{(point.intensity * 100).toFixed(0)}%</div>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="flex items-center justify-center gap-6 mt-4 text-sm">
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-green-500 rounded" />
-              <span className="text-gray-600">正常</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-yellow-500 rounded" />
-              <span className="text-gray-600">注意</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-orange-500 rounded" />
-              <span className="text-gray-600">警告</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-red-500 rounded" />
-              <span className="text-gray-600">严重</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="col-span-4 bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+      <div className="grid grid-cols-2 gap-6">
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
           <h3 className="text-lg font-semibold text-gray-800 mb-4">产量预测对比</h3>
-          <ResponsiveContainer width="100%" height={250}>
+          <ResponsiveContainer width="100%" height={300}>
             <BarChart data={yieldComparisonData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="name" fontSize={12} />
-              <YAxis fontSize={12} />
+              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+              <YAxis tick={{ fontSize: 11 }} />
               <Tooltip />
               <Legend />
-              <Bar dataKey="预测产量" fill="#22c55e" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="历史产量" fill="#94a3b8" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="预计产量" fill="#22c55e" />
+              <Bar dataKey="历史产量" fill="#94a3b8" />
             </BarChart>
           </ResponsiveContainer>
         </div>
 
-        <div className="col-span-3 bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">区域分布</h3>
-          <ResponsiveContainer width="100%" height={180}>
-            <PieChart>
-              <Pie
-                data={zoneTypeData}
-                cx="50%"
-                cy="50%"
-                innerRadius={40}
-                outerRadius={70}
-                dataKey="value"
-              >
-                {zoneTypeData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="space-y-2 mt-2">
-            {zoneTypeData.map((item) => (
-              <div key={item.name} className="flex items-center justify-between text-sm">
-                <div className="flex items-center gap-2">
-                  <div className={`w-3 h-3 rounded ${item.color.replace('bg-', '')}`} style={{ backgroundColor: item.color }} />
-                  <span className="text-gray-600">{item.name}</span>
-                </div>
-                <span className="font-medium text-gray-800">{item.value} 个</span>
-              </div>
+        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+          <h3 className="text-lg font-semibold text-gray-800 mb-4">病虫害告警热力图</h3>
+          <div className="relative w-full h-64 bg-gradient-to-br from-green-50 to-green-100 rounded-lg overflow-hidden">
+            {heatmapPoints.map((point, idx) => (
+              <div
+                key={idx}
+                className="absolute w-6 h-6 rounded-full bg-red-500 animate-pulse"
+                style={{
+                  left: `${point.x}%`,
+                  top: `${point.y}%`,
+                  opacity: point.intensity,
+                  transform: 'translate(-50%, -50%)',
+                }}
+              />
             ))}
+            {heatmapPoints.length === 0 && (
+              <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-sm">
+                暂无病虫害告警
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">今日任务进度</h3>
-          <div className="space-y-3">
-            {tasks.map((task) => (
-              <div key={task.id} className="flex items-center justify-between p-3 border border-gray-100 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div className={`w-2 h-2 rounded-full ${
-                    task.status === 'completed' ? 'bg-green-500' :
-                    task.status === 'in_progress' ? 'bg-blue-500' :
-                    task.status === 'overdue' || task.status === 'escalated' ? 'bg-red-500' :
-                    'bg-gray-400'
-                  }`} />
-                  <div>
-                    <div className="text-sm font-medium text-gray-800">{task.title}</div>
-                    <div className="text-xs text-gray-500">{getZoneName(task.zoneId)}</div>
-                  </div>
-                </div>
-                <span className={`px-2 py-1 text-xs rounded-full ${getTaskStatusColor(task.status)}`}>
-                  {getTaskStatusName(task.status)}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">月度种植效率趋势</h3>
-          <ResponsiveContainer width="100%" height={250}>
-            <LineChart data={monthlyReports}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="month" fontSize={12} tickFormatter={(v) => v.slice(5)} />
-              <YAxis fontSize={12} />
-              <Tooltip />
-              <Legend />
-              <Line type="monotone" dataKey="plantingEfficiency" name="效率(%)" stroke="#22c55e" strokeWidth={2} dot={{ fill: '#22c55e' }} />
-              <Line type="monotone" dataKey="roi" name="ROI" stroke="#8b5cf6" strokeWidth={2} dot={{ fill: '#8b5cf6' }} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
+      <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+        <h3 className="text-lg font-semibold text-gray-800 mb-4">月度种植效率趋势</h3>
+        <ResponsiveContainer width="100%" height={250}>
+          <LineChart data={monthlyReports}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+            <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+            <YAxis tick={{ fontSize: 11 }} />
+            <Tooltip />
+            <Legend />
+            <Line type="monotone" dataKey="plantingEfficiency" stroke="#22c55e" strokeWidth={2} dot={{ fill: '#22c55e' }} name="种植效率(%)" />
+            <Line type="monotone" dataKey="roi" stroke="#3b82f6" strokeWidth={2} dot={{ fill: '#3b82f6' }} name="ROI" />
+          </LineChart>
+        </ResponsiveContainer>
       </div>
     </div>
   );

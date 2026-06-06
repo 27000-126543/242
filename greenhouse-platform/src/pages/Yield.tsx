@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   BarChart,
   Bar,
@@ -23,13 +23,38 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Users,
+  Truck,
+  Loader2,
 } from 'lucide-react';
 import { useAppStore } from '../store';
+import { api } from '../services/api';
 import { formatDate, getZoneName } from '../utils';
 
 const Yield: React.FC = () => {
-  const { yieldPredictions, salesOrders, zones } = useAppStore();
+  const { yieldPredictions, salesOrders, zones, loadYieldPredictions, loadSalesOrders, orderMatch } = useAppStore();
   const [activeTab, setActiveTab] = useState<'predictions' | 'orders'>('predictions');
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    loadYieldPredictions();
+    loadSalesOrders();
+  }, [loadYieldPredictions, loadSalesOrders]);
+
+  const handleShipToPartner = async (orderId: string) => {
+    if (confirm('确认将盈余产品发往合作商？')) {
+      setLoading(true);
+      try {
+        await api.orders.updateStatus(orderId, 'surplus');
+        await loadSalesOrders();
+        alert('已生成发往合作商的配送建议');
+      } catch (error) {
+        console.error('操作失败:', error);
+        alert('操作失败，请重试');
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
 
   const totalPredictedYield = yieldPredictions.reduce((a, b) => a + b.predictedYield, 0);
   const totalHistoricalYield = yieldPredictions.reduce((a, b) => a + b.historicalYield, 0);
@@ -313,8 +338,17 @@ const Yield: React.FC = () => {
                        order.status === 'shortage' ? '有缺口' :
                        order.status === 'surplus' ? '有盈余' : '待匹配'}
                     </span>
-                    {order.status === 'shortage' && (
-                      <button className="px-3 py-1 text-xs bg-orange-600 text-white rounded-lg hover:bg-orange-700">
+                    {(order.status === 'shortage' || order.status === 'surplus') && (
+                      <button
+                        onClick={() => handleShipToPartner(order.id)}
+                        disabled={loading}
+                        className="flex items-center gap-1 px-3 py-1 text-xs bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50"
+                      >
+                        {loading ? (
+                          <Loader2 size={12} className="animate-spin" />
+                        ) : (
+                          <Truck size={12} />
+                        )}
                         发往合作商
                       </button>
                     )}

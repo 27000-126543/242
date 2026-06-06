@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Users as UsersIcon,
   Plus,
@@ -14,9 +14,14 @@ import { useAppStore } from '../store';
 import { getRoleName, getZoneName } from '../utils';
 
 const UserManagement: React.FC = () => {
-  const { users, zones, setCurrentUser, currentUser } = useAppStore();
+  const { users, zones, setCurrentUser, currentUser, loadUsers, loadZones } = useAppStore();
   const [searchText, setSearchText] = useState<string>('');
   const [showAddModal, setShowAddModal] = useState(false);
+
+  useEffect(() => {
+    loadUsers();
+    loadZones();
+  }, [loadUsers, loadZones]);
 
   const filteredUsers = users.filter((u) => {
     if (searchText && !u.name.includes(searchText)) return false;

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   ClipboardList,
   QrCode,
@@ -11,8 +11,10 @@ import {
   User,
   MapPin,
   Calendar,
+  Upload,
 } from 'lucide-react';
 import { useAppStore } from '../store';
+import { api } from '../services/api';
 import {
   formatDateTime,
   formatTime,
@@ -25,12 +27,25 @@ import {
 import type { TaskStatus } from '../types';
 
 const Tasks: React.FC = () => {
-  const { tasks, currentUser, updateTaskStatus, zones } = useAppStore();
+  const { tasks, currentUser, updateTaskStatus, zones, loadTasks, loadQRCode, qrCode, checkIn } = useAppStore();
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [searchText, setSearchText] = useState<string>('');
   const [showCheckinModal, setShowCheckinModal] = useState(false);
   const [selectedTask, setSelectedTask] = useState<string | null>(null);
   const [photoUrl, setPhotoUrl] = useState<string>('');
+  const [uploading, setUploading] = useState(false);
+  const [checkinSuccess, setCheckinSuccess] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    loadTasks();
+  }, [loadTasks]);
+
+  useEffect(() => {
+    if (showCheckinModal && currentUser?.id) {
+      loadQRCode(currentUser.id);
+    }
+  }, [showCheckinModal, currentUser?.id, loadQRCode]);
 
   const filteredTasks = tasks.filter((task) => {
     if (selectedStatus !== 'all' && task.status !== selectedStatus) return false;
@@ -48,11 +63,42 @@ const Tasks: React.FC = () => {
     }
   };
 
-  const handleCompleteTask = () => {
-    if (selectedTask) {
-      const mockPhotoUrl = photoUrl || `https://images.unsplash.com/photo-${1416879595882 + Math.floor(Math.random() * 1000)}-3373a0480b5b?w=400`;
-      updateTaskStatus(selectedTask, 'completed', mockPhotoUrl);
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedTask) return;
+    
+    setUploading(true);
+    try {
+      const result = await api.upload.taskPhoto(selectedTask, file);
+      setPhotoUrl(result.photoUrl);
+    } catch (error) {
+      console.error('照片上传失败:', error);
+      alert('照片上传失败，请重试');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleCompleteTask = async () => {
+    if (selectedTask && photoUrl) {
+      await updateTaskStatus(selectedTask, 'completed', photoUrl);
       setSelectedTask(null);
+      setPhotoUrl('');
+    }
+  };
+
+  const handleCheckIn = async () => {
+    if (!currentUser?.id) return;
+    try {
+      await checkIn(currentUser.id);
+      setCheckinSuccess(true);
+      setTimeout(() => {
+        setCheckinSuccess(false);
+        setShowCheckinModal(false);
+      }, 2000);
+    } catch (error) {
+      console.error('打卡失败:', error);
+      alert('打卡失败，请重试');
     }
   };
 
@@ -208,16 +254,22 @@ const Tasks: React.FC = () => {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 上传完成照片
               </label>
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
-                <Camera size={48} className="mx-auto text-gray-400 mb-2" />
-                <p className="text-sm text-gray-500 mb-2">点击或拖拽上传照片</p>
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-primary-400 transition-colors" onClick={() => fileInputRef.current?.click()}>
                 <input
-                  type="text"
-                  placeholder="或输入图片URL（演示用）"
-                  value={photoUrl}
-                  onChange={(e) => setPhotoUrl(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoUpload}
+                  className="hidden"
                 />
+                {photoUrl ? (
+                  <img src={photoUrl} alt="上传预览" className="w-full max-h-48 object-contain mx-auto" />
+                ) : (
+                  <>
+                    <Upload size={48} className="mx-auto text-gray-400 mb-2" />
+                    <p className="text-sm text-gray-500">{uploading ? '上传中...' : '点击上传照片'}</p>
+                  </>
+                )}
               </div>
             </div>
             <div className="flex gap-3">
@@ -229,7 +281,8 @@ const Tasks: React.FC = () => {
               </button>
               <button
                 onClick={handleCompleteTask}
-                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm"
+                disabled={!photoUrl || uploading}
+                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 确认完成
               </button>
@@ -242,22 +295,43 @@ const Tasks: React.FC = () => {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl p-6 w-full max-w-md text-center">
             <h3 className="text-lg font-semibold text-gray-800 mb-4">扫码打卡</h3>
-            <div className="bg-gray-100 rounded-lg p-8 mb-4">
-              <div className="w-48 h-48 mx-auto bg-white border-2 border-gray-300 rounded-lg flex items-center justify-center">
-                <QrCode size={120} className="text-gray-600" />
+            {checkinSuccess ? (
+              <div className="py-8">
+                <CheckCircle size={64} className="mx-auto text-green-500 mb-4" />
+                <p className="text-lg font-medium text-green-600">打卡成功！</p>
               </div>
-            </div>
-            <p className="text-sm text-gray-500 mb-4">请扫描工作区域二维码进行打卡</p>
-            <div className="bg-green-50 text-green-700 p-3 rounded-lg mb-4">
-              <p className="text-sm">当前用户：{currentUser.name}</p>
-              <p className="text-sm">打卡时间：{formatDateTime(new Date().toISOString())}</p>
-            </div>
-            <button
-              onClick={() => setShowCheckinModal(false)}
-              className="w-full px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm"
-            >
-              模拟打卡成功
-            </button>
+            ) : (
+              <>
+                <div className="bg-gray-100 rounded-lg p-6 mb-4">
+                  {qrCode ? (
+                    <img src={qrCode} alt="打卡二维码" className="w-48 h-48 mx-auto" />
+                  ) : (
+                    <div className="w-48 h-48 mx-auto bg-white border-2 border-gray-300 rounded-lg flex items-center justify-center">
+                      <QrCode size={120} className="text-gray-600" />
+                    </div>
+                  )}
+                </div>
+                <p className="text-sm text-gray-500 mb-4">请扫描上方二维码进行打卡</p>
+                <div className="bg-green-50 text-green-700 p-3 rounded-lg mb-4">
+                  <p className="text-sm">当前用户：{currentUser.name}</p>
+                  <p className="text-sm">打卡时间：{formatDateTime(new Date().toISOString())}</p>
+                </div>
+                <button
+                  onClick={handleCheckIn}
+                  className="w-full px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm"
+                >
+                  确认打卡
+                </button>
+              </>
+            )}
+            {!checkinSuccess && (
+              <button
+                onClick={() => setShowCheckinModal(false)}
+                className="w-full mt-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+              >
+                取消
+              </button>
+            )}
           </div>
         </div>
       )}

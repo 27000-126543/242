@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Package,
   QrCode,
@@ -19,11 +19,16 @@ import {
 } from '../utils';
 
 const Inventory: React.FC = () => {
-  const { inventoryItems, purchaseWarnings, currentUser, approvePurchaseWarning, updateInventory } = useAppStore();
+  const { inventoryItems, purchaseWarnings, currentUser, approvePurchaseWarning, updateInventory, loadInventory, loadPurchaseWarnings } = useAppStore();
   const [selectedType, setSelectedType] = useState<string>('all');
   const [searchText, setSearchText] = useState<string>('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'inventory' | 'warnings'>('inventory');
+
+  useEffect(() => {
+    loadInventory();
+    loadPurchaseWarnings();
+  }, [loadInventory, loadPurchaseWarnings]);
 
   const filteredItems = inventoryItems.filter((item) => {
     if (selectedType !== 'all' && item.type !== selectedType) return false;

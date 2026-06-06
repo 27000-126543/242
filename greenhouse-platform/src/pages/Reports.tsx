@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   LineChart,
   Line,
@@ -20,25 +20,48 @@ import {
   DollarSign,
   Leaf,
   BarChart3,
+  Loader2,
 } from 'lucide-react';
 import { useAppStore } from '../store';
-import { monthlyReports } from '../data/mockData';
 
 const Reports: React.FC = () => {
-  const { zones } = useAppStore();
+  const { zones, yieldPredictions, salesOrders, loadYieldPredictions, loadSalesOrders, exportEfficiency, exportIO } = useAppStore();
   const [selectedMonth, setSelectedMonth] = useState<string>('2026-06');
   const [selectedZone, setSelectedZone] = useState<string>('all');
   const [selectedCrop, setSelectedCrop] = useState<string>('all');
+  const [exporting, setExporting] = useState<string | null>(null);
 
-  const reportData = monthlyReports.map((r) => ({
-    ...r,
-    monthLabel: r.month.slice(5),
+  useEffect(() => {
+    loadYieldPredictions();
+    loadSalesOrders();
+  }, [loadYieldPredictions, loadSalesOrders]);
+
+  const reportData = yieldPredictions.map((y) => ({
+    month: y.month,
+    monthLabel: y.month.slice(5),
+    yield: y.predictedYield,
+    actual: y.actualYield || y.predictedYield * 0.95,
   }));
 
-  const currentMonthData = monthlyReports[monthlyReports.length - 1];
+  const currentMonthData = yieldPredictions[yieldPredictions.length - 1] || {
+    predictedYield: 0,
+    actualYield: 0,
+  };
 
-  const handleExport = (type: 'efficiency' | 'finance') => {
-    alert(`正在导出${type === 'efficiency' ? '种植效率分析' : '投入产出明细'}报告...`);
+  const handleExport = async (type: 'efficiency' | 'finance') => {
+    setExporting(type);
+    try {
+      if (type === 'efficiency') {
+        await exportEfficiency();
+      } else {
+        await exportIO();
+      }
+    } catch (error) {
+      console.error('导出失败:', error);
+      alert('导出失败，请重试');
+    } finally {
+      setExporting(null);
+    }
   };
 
   return (
@@ -48,16 +71,26 @@ const Reports: React.FC = () => {
         <div className="flex items-center gap-3">
           <button
             onClick={() => handleExport('efficiency')}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+            disabled={exporting !== null}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Download size={16} />
+            {exporting === 'efficiency' ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <Download size={16} />
+            )}
             导出种植效率分析
           </button>
           <button
             onClick={() => handleExport('finance')}
-            className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm"
+            disabled={exporting !== null}
+            className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Download size={16} />
+            {exporting === 'finance' ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <Download size={16} />
+            )}
             导出投入产出明细
           </button>
         </div>
@@ -71,8 +104,8 @@ const Reports: React.FC = () => {
             onChange={(e) => setSelectedMonth(e.target.value)}
             className="text-sm border-none outline-none bg-transparent"
           >
-            {monthlyReports.map((r) => (
-              <option key={r.month} value={r.month}>{r.month}</option>
+            {yieldPredictions.map((y) => (
+              <option key={y.month} value={y.month}>{y.month}</option>
             ))}
           </select>
         </div>

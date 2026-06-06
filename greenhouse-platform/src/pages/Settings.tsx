@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Settings as SettingsIcon,
   Thermometer,
@@ -14,8 +14,12 @@ import {
 import { useAppStore } from '../store';
 
 const SystemSettings: React.FC = () => {
-  const { zones } = useAppStore();
+  const { zones, loadZones } = useAppStore();
   const [selectedZone, setSelectedZone] = useState<string>('all');
+
+  useEffect(() => {
+    loadZones();
+  }, [loadZones]);
   const [systemSettings, setSystemSettings] = useState({
     temperature: { min: 15, max: 35, autoControl: true },
     humidity: { min: 40, max: 85, autoControl: true },
