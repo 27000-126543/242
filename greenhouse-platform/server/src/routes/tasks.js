@@ -6,8 +6,21 @@ const router = express.Router();
 router.get('/', async (req, res) => {
   try {
     const { assignedTo, zoneId, status } = req.query;
+    const user = req.user;
     let sql = 'SELECT * FROM tasks WHERE 1=1';
     const params = [];
+
+    if (user.role === 'worker') {
+      sql += ' AND assignedTo = ?';
+      params.push(user.id);
+    } else if (user.role === 'technician') {
+      if (user.zoneIds && user.zoneIds.length > 0) {
+        const placeholders = user.zoneIds.map(() => '?').join(',');
+        sql += ` AND zoneId IN (${placeholders})`;
+        params.push(...user.zoneIds);
+      }
+    }
+
     if (assignedTo) { sql += ' AND assignedTo = ?'; params.push(assignedTo); }
     if (zoneId) { sql += ' AND zoneId = ?'; params.push(zoneId); }
     if (status) { sql += ' AND status = ?'; params.push(status); }

@@ -5,7 +5,18 @@ const router = express.Router();
 
 router.get('/', async (req, res) => {
   try {
-    const zones = await all('SELECT * FROM zones');
+    const user = req.user;
+    let zones;
+    if (user.role === 'owner' || user.role === 'supervisor') {
+      zones = await all('SELECT * FROM zones');
+    } else {
+      if (user.zoneIds && user.zoneIds.length > 0) {
+        const placeholders = user.zoneIds.map(() => '?').join(',');
+        zones = await all(`SELECT * FROM zones WHERE id IN (${placeholders})`, user.zoneIds);
+      } else {
+        zones = [];
+      }
+    }
     res.json(zones);
   } catch (err) {
     res.status(500).json({ error: err.message });

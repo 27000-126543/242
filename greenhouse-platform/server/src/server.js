@@ -3,6 +3,7 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import './models/db.js';
+import { authenticateToken } from './middleware/auth.js';
 
 import authRouter from './routes/auth.js';
 import zonesRouter from './routes/zones.js';
@@ -31,19 +32,19 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 app.use('/api/auth', authRouter);
-app.use('/api/zones', zonesRouter);
-app.use('/api/sensors', sensorsRouter);
-app.use('/api/devices', devicesRouter);
-app.use('/api/alerts', alertsRouter);
-app.use('/api/users', usersRouter);
-app.use('/api/tasks', tasksRouter);
-app.use('/api/pests', pestsRouter);
-app.use('/api/inventory', inventoryRouter);
-app.use('/api/orders', ordersRouter);
-app.use('/api/yield', yieldRouter);
-app.use('/api/reports', reportsRouter);
-app.use('/api/attendance', attendanceRouter);
-app.use('/api/upload', uploadRouter);
+app.use('/api/zones', authenticateToken, zonesRouter);
+app.use('/api/sensors', authenticateToken, sensorsRouter);
+app.use('/api/devices', authenticateToken, devicesRouter);
+app.use('/api/alerts', authenticateToken, alertsRouter);
+app.use('/api/users', authenticateToken, usersRouter);
+app.use('/api/tasks', authenticateToken, tasksRouter);
+app.use('/api/pests', authenticateToken, pestsRouter);
+app.use('/api/inventory', authenticateToken, inventoryRouter);
+app.use('/api/orders', authenticateToken, ordersRouter);
+app.use('/api/yield', authenticateToken, yieldRouter);
+app.use('/api/reports', authenticateToken, reportsRouter);
+app.use('/api/attendance', authenticateToken, attendanceRouter);
+app.use('/api/upload', authenticateToken, uploadRouter);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
