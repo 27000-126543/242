@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import './models/db.js';
 
+import authRouter from './routes/auth.js';
 import zonesRouter from './routes/zones.js';
 import sensorsRouter from './routes/sensors.js';
 import devicesRouter from './routes/devices.js';
@@ -22,13 +23,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 3002;
+const PORT = process.env.PORT || 3003;
 
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
+app.use('/api/auth', authRouter);
 app.use('/api/zones', zonesRouter);
 app.use('/api/sensors', sensorsRouter);
 app.use('/api/devices', devicesRouter);

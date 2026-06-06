@@ -16,6 +16,8 @@ import { getRoleName } from '../utils';
 
 const Sidebar: React.FC = () => {
   const { currentUser } = useAppStore();
+  
+  if (!currentUser) return null;
 
   const menuItems = [
     { path: '/', icon: LayoutDashboard, label: '数据大屏', roles: ['worker', 'technician', 'supervisor', 'owner'] },

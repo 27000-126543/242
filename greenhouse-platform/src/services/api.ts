@@ -1,15 +1,49 @@
-const API_BASE = 'http://localhost:3002/api';
+const API_BASE = 'http://localhost:3003/api';
+
+let authToken: string | null = localStorage.getItem('token');
+
+export const setAuthToken = (token: string | null) => {
+  authToken = token;
+  if (token) {
+    localStorage.setItem('token', token);
+  } else {
+    localStorage.removeItem('token');
+  }
+};
 
 const request = async <T>(url: string, options?: RequestInit): Promise<T> => {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...options?.headers,
+  };
+  
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
+  }
+
   const response = await fetch(`${API_BASE}${url}`, {
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
     ...options,
+    headers,
   });
+  
+  if (response.status === 401) {
+    setAuthToken(null);
+    window.location.href = '/login';
+    throw new Error('未授权，请重新登录');
+  }
+  
   if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
   return response.json();
 };
 
 export const api = {
+  auth: {
+    login: (phone: string, password: string) =>
+      request<any>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ phone, password }),
+      }),
+  },
   zones: {
     getAll: () => request<any[]>('/zones'),
     getById: (id: string) => request<any>(`/zones/${id}`),
@@ -137,20 +171,41 @@ export const api = {
     pestImage: async (file: File) => {
       const formData = new FormData();
       formData.append('image', file);
+      const headers: Record<string, string> = {};
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
       const res = await fetch(`${API_BASE}/upload/image`, {
         method: 'POST',
         body: formData,
+        headers,
       });
+      if (res.status === 401) {
+        setAuthToken(null);
+        window.location.href = '/login';
+        throw new Error('未授权，请重新登录');
+      }
       if (!res.ok) throw new Error('Upload failed');
       return res.json();
     },
-    taskPhoto: async (file: File) => {
+    taskPhoto: async (taskId: string, file: File) => {
       const formData = new FormData();
+      formData.append('taskId', taskId);
       formData.append('photo', file);
+      const headers: Record<string, string> = {};
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
       const res = await fetch(`${API_BASE}/upload/task-photo`, {
         method: 'POST',
         body: formData,
+        headers,
       });
+      if (res.status === 401) {
+        setAuthToken(null);
+        window.location.href = '/login';
+        throw new Error('未授权，请重新登录');
+      }
       if (!res.ok) throw new Error('Upload failed');
       return res.json();
     },

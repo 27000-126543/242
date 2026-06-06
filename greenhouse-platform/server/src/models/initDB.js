@@ -1,4 +1,5 @@
 import { run } from './db.js';
+import bcrypt from 'bcryptjs';
 
 const createTables = async () => {
   try {
@@ -231,6 +232,7 @@ const seedData = async () => {
       }
     }
 
+    const hashedPassword = await bcrypt.hash('123456', 10);
     const usersData = [
       { id: 'user-1', name: '张农场主', role: 'owner', phone: '13800138001' },
       { id: 'user-2', name: '李主管', role: 'supervisor', phone: '13800138002' },
@@ -242,7 +244,7 @@ const seedData = async () => {
     for (const user of usersData) {
       await run(
         'INSERT OR IGNORE INTO users (id, name, role, phone, password) VALUES (?, ?, ?, ?, ?)',
-        [user.id, user.name, user.role, user.phone, '123456']
+        [user.id, user.name, user.role, user.phone, hashedPassword]
       );
     }
 

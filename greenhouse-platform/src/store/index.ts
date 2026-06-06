@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { api } from '../services/api';
+import { api, setAuthToken } from '../services/api';
 import type { UserRole } from '../types';
 
 interface AppState {
@@ -24,6 +24,7 @@ interface AppState {
   attendanceRecords: any[];
 
   setCurrentUser: (user: any) => void;
+  logout: () => void;
   loadAllData: () => Promise<void>;
   loadZones: () => Promise<void>;
   loadSensorData: () => Promise<void>;
@@ -55,16 +56,8 @@ interface AppState {
   exportIO: () => void;
 }
 
-const defaultUser = {
-  id: 'user-1',
-  name: '张农场主',
-  role: 'owner',
-  phone: '13800138001',
-  zoneIds: ['zone-1', 'zone-2', 'zone-3', 'zone-4', 'zone-5', 'zone-6'],
-};
-
 export const useAppStore = create<AppState>((set, get) => ({
-  currentUser: defaultUser,
+  currentUser: null,
   zones: [],
   sensorData: [],
   devices: [],
@@ -85,6 +78,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   attendanceRecords: [],
 
   setCurrentUser: (user) => set({ currentUser: user }),
+
+  logout: () => {
+    setAuthToken(null);
+    set({ currentUser: null });
+    window.location.href = '/login';
+  },
 
   loadAllData: async () => {
     set({ loading: true });
@@ -178,7 +177,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const params: any = { ...filters };
       const user = get().currentUser;
-      if (user.role === 'worker') {
+      if (user && user.role === 'worker') {
         params.assignedTo = user.id;
       }
       const tasks = await api.tasks.getAll(params);
